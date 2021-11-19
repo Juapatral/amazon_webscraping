@@ -3,3 +3,6 @@
 
 # All edited files
 my*.csv
+
+# All whatsapp files
+Pywhat*
