@@ -6,8 +6,6 @@ jobs:
   complete-linting:
     runs-on: ubuntu-latest
     name: Complete linting
-    env:
-      working-directory: ./src
     steps:
       - name: Check out source repository
         uses: actions/checkout@v2
@@ -25,7 +23,7 @@ jobs:
           "mypy~=0.902" \
           "pydocstyle~=6.1.1" \
           "types-requests~=0.1.9" \
-          
+
       - name: Run Black
         run: black src/
         working-directory: ${{env.working-directory}}
