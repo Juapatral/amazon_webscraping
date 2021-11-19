@@ -189,8 +189,8 @@ def search_product_list(
         url_info["stock"] = url_info.get("stock", "")
         # Getting dataframe
         list_url_info.append(url_info)
-        if (not np.isnan(url_info.get("price"))) & (
-            url_info.get("price") < url_info.get("buy_below")
+        if (not np.isnan(url_info.get("price", np.nan))) & (
+            url_info.get("price", 999999) < url_info.get("buy_below")
         ):
             print(
                 "".join(
