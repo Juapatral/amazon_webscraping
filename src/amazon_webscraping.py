@@ -10,6 +10,7 @@ from datetime import datetime
 import bs4
 import numpy as np
 import pandas as pd
+import pywhatkit
 import requests
 from bs4 import BeautifulSoup
 
@@ -26,20 +27,16 @@ HEADERS = {
     "Accept-Language": "en-US, en;q=0.5",
 }
 
-# ERASE
-path_to_wishlist = r".\files\wishlist\my_shopping_list.csv"
-path_to_history = r".\files\results\my_shoppin_list_searched.csv"
-
 
 # Private function _get_price_tag
 def _get_price_tag(soup: BeautifulSoup) -> bs4.element.Tag:
-    """[summary].
+    """Get price tag from multiple possible tags.
 
     Args:
-        soup (BeautifulSoup): [description]
+        soup (BeautifulSoup): Soup from an amazon article.
 
     Returns:
-        bs4.element.Tag: [description]
+        bs4.element.Tag: Tag with price
     """
     price_tag_class = "a-price a-text-price a-size-medium apexPriceToPay"
     price_tag = soup.find(id="priceblock_ourprice")
@@ -62,10 +59,39 @@ def _get_price_tag(soup: BeautifulSoup) -> bs4.element.Tag:
 
 # End of function _get_price_tag
 
+
+# Private Function _send_whatsapp
+def _send_whatsapp(number: str, url_info: dict):
+    """Send a whatsapp message using Whatsapp web.
+
+    Args:
+        number (str): Phone number to send message with country code.
+        message (str): Message.
+    """
+    # Define message
+    message = "".join(
+        [
+            "Oelo, soy un bot y te digo que todavía no compres este ",
+            f"""producto: {url_info.get("code", "PROD_CODE")}. """,
+            "Porque todavía no está más barato que ",
+            f"""{url_info.get("buy_below")}. """,
+            f"""Esta es la URL: {url_info.get("url","URL_PRODUCTO")}""",
+        ]
+    )
+    # Send whatsapp
+
+    pywhatkit.sendwhatmsg_instantly(
+        number, message, wait_time=10, tab_close=True, close_time=5
+    )
+
+
+# End of private function _send_whatsapp
+
 # Function search_product_list
 def search_product_list(
     path_to_wishlist: str,
     path_to_history: str,
+    path_to_users: str,
 ) -> None:
     """[summary].
 
@@ -73,22 +99,37 @@ def search_product_list(
         path_to_wishlist (str): [description]
         path_to_history (str): [description]
     """
+    # Load information
     prod_tracker = pd.read_csv(path_to_wishlist)
+    users_details = pd.read_csv(path_to_users)
+
+    # Merge user information
+    prod_tracker = prod_tracker.merge(users_details)
+
+    # Get urls and dates
     prod_tracker_urls = prod_tracker["url"]
     now = datetime.now().strftime("%Y-%m-%d %Hh%Mm")
+
+    # Iterate over each url
     list_url_info = []
     for index_, url in enumerate(prod_tracker_urls):
+        # After first url, wait 5 seconds between.
         if index_ >= 1:
             time.sleep(5)
+
+        # Create url information dictionary
         url_info = {
             "date": now.replace("h", ":").replace("m", ""),
+            "user": prod_tracker["user"][index_],
             "code": prod_tracker["code"][index_],
             "url": url,
             "buy_below": prod_tracker["buy_below"][index_],
         }
+
         # Request
         retries = 0
         page = requests.get(url, headers=HEADERS)
+
         # Check for good response
         while retries < 5:
             if page.status_code != 200:
@@ -101,6 +142,7 @@ def search_product_list(
             continue
         retries = 0
         soup = BeautifulSoup(page.content, features="lxml")
+
         # Check for robot detection
         robot = soup.find("p", {"class": "a-last"})
         while retries < 3:
@@ -116,12 +158,14 @@ def search_product_list(
                 break
         if retries >= 3:
             continue
+
         # Title
         title_tag = soup.find(id="productTitle")
         if title_tag:
             title = title_tag.get_text().strip()
             url_info["title"] = title
         url_info["title"] = url_info.get("title", "")
+
         # Price
         price_tag = _get_price_tag(soup)
         if price_tag:
@@ -135,6 +179,7 @@ def search_product_list(
             )
             url_info["price"] = price
         url_info["price"] = url_info.get("price", np.nan)
+
         # Review count
         review_count_tag = soup.find(id="acrCustomerReviewText")
         if review_count_tag:
@@ -146,6 +191,7 @@ def search_product_list(
             )
             url_info["review_count"] = review_count
         url_info["review_count"] = url_info.get("review_count", np.nan)
+
         # Review score
         review_score_class = "i[class*='a-icon a-icon-star a-star-']"
         review_score_tag = soup.select(review_score_class)
@@ -160,6 +206,7 @@ def search_product_list(
                 except (AttributeError, KeyError):
                     continue
         url_info["review_score"] = url_info.get("review_score", np.nan)
+
         # checking if there is "Out of stock"
         try:
             available = soup.select("#availability .a-color-price")
@@ -182,27 +229,22 @@ def search_product_list(
                 stock = "Available"
                 url_info["stock"] = stock
         except (AttributeError, IndexError):
-            # if there is any error in the previous try statements,
-            # it means the product is available
+            # Ff any error the product is available
             stock = "Available"
             url_info["stock"] = stock
         url_info["stock"] = url_info.get("stock", "")
+
         # Getting dataframe
         list_url_info.append(url_info)
+
+        # WARNING
         if (not np.isnan(url_info.get("price", np.nan))) & (
             url_info.get("price", 999999) < url_info.get("buy_below")
         ):
-            print(
-                "".join(
-                    [
-                        "************************ ALERT! ",
-                        f"BUY {prod_tracker.code[index_]}",
-                        " ************************",
-                    ]
-                )
-            )
-    # after the run, checks last search history record,
-    # and appends this run results to it, saving a new file
+            number = "".join(["+", str(prod_tracker["phone"][index_])])
+            _send_whatsapp(number, url_info)
+
+    # Append this run results
     tracker_log = pd.DataFrame(list_url_info)
     tracker_log.to_csv(path_to_history, mode="a", header=False, index=False)
 
@@ -210,4 +252,9 @@ def search_product_list(
 # End of function search_product_list
 
 if __name__ == "__main__":
-    search_product_list(path_to_wishlist, path_to_history)
+    # ERASE
+    path_to_wishlist = r".\files\wishlist\my_shopping_list.csv"
+    path_to_history = r".\files\results\my_shoppin_list_searched.csv"
+    path_to_users = r".\files\users\my_users_info.csv"
+
+    search_product_list(path_to_wishlist, path_to_history, path_to_users)
