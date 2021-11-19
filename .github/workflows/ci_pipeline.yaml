@@ -24,22 +24,24 @@ jobs:
           "isort>=4.3.21, <=5.10.1" \
           "mypy~=0.902" \
           "pydocstyle~=6.1.1" \
+          "types-requests~=0.1.9" \
+          
       - name: Run Black
-        run: black .
+        run: black src/
         working-directory: ${{env.working-directory}}
 
       - name: Run flake8
-        run: flake8 ./src
+        run: flake8 src/
         working-directory: ${{env.working-directory}}
 
       - name: Run isort
-        run: isort -rc ./src
+        run: isort -rc src/
         working-directory: ${{env.working-directory}}
 
       - name: Run pydocstyle
-        run: pydocstyle ./src
+        run: pydocstyle src/
         working-directory: ${{env.working-directory}}
 
       - name: Run mypy
-        run: mypy ./src
+        run: mypy src/
         working-directory: ${{env.working-directory}}
