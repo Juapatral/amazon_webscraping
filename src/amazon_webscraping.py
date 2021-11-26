@@ -3,6 +3,8 @@
 """Amazon Webscraping."""
 
 # Modules
+import logging
+import os
 import re
 import sys
 import time
@@ -27,6 +29,9 @@ HEADERS = {
     "Accept-Language": "en-US, en;q=0.5",
 }
 
+# Log cofiguration
+logging.basicConfig(format="[%(asctime)s]: %(message)s", level=logging.INFO)
+
 
 # Private function _get_price_tag
 def _get_price_tag(soup: bs4.BeautifulSoup) -> bs4.element.Tag:
@@ -45,8 +50,7 @@ def _get_price_tag(soup: bs4.BeautifulSoup) -> bs4.element.Tag:
         if not price_tag:
             price_tag = soup.find("span", {"data-a-color": "price"})
             if price_tag:
-                price_class = {"class": "a-offscreen"}
-                price_tag = price_tag.find("span", price_class)
+                price_tag = price_tag.find("span", {"class": "a-offscreen"})
             else:
                 price_tags = soup.find_all("span", {"class": price_tag_class})
                 if price_tags:
@@ -71,9 +75,9 @@ def _send_whatsapp(number: str, url_info: dict):
     # Define message
     message = "".join(
         [
-            "Oelo, soy un bot y te digo que todavía no compres este ",
-            f"""producto: {url_info.get("code", "PROD_CODE")}. """,
-            "Porque todavía no está más barato que ",
+            "Soy un bot que busca productos de Amazon y te comento que ",
+            f"""tu producto: {url_info.get("code", "PROD_CODE")}. """,
+            "está a 5 USD de diferencia de: ",
             f"""{url_info.get("buy_below")}. """,
             f"""Esta es la URL: {url_info.get("url","URL_PRODUCTO")}""",
         ]
@@ -100,6 +104,7 @@ def search_product_list(
         path_to_history (str): [description]
     """
     # Load information
+    logging.info("# ------- READING FILES ------- #")
     prod_tracker = pd.read_csv(path_to_wishlist)
     users_details = pd.read_csv(path_to_users)
 
@@ -112,6 +117,7 @@ def search_product_list(
 
     # Iterate over each url
     list_url_info = []
+    logging.info("Starting scraping of product...")
     for index_, url in enumerate(prod_tracker_urls):
         # After first url, wait 5 seconds between.
         if index_ >= 1:
@@ -125,6 +131,7 @@ def search_product_list(
             "url": url,
             "buy_below": prod_tracker["buy_below"][index_],
         }
+        code = url_info["code"]
 
         # Request
         retries = 0
@@ -139,6 +146,7 @@ def search_product_list(
             else:
                 break
         if retries >= 5:
+            logging.warning(f"Product {code} did not retrieve information.")
             continue
         retries = 0
         soup = bs4.BeautifulSoup(page.content, features="lxml")
@@ -150,13 +158,23 @@ def search_product_list(
                 robot_text = robot.get_text()
                 if robot_text.startswith("Sorry, we just need to make sure"):
                     retries += 1
-                    time.sleep(30 + 10 * retries)
+                    seconds = 30 + 10 * retries
+                    logging.warning(
+                        "".join(
+                            [
+                                f"Robot detection, waiting for {seconds} ",
+                                "seconds.",
+                            ]
+                        )
+                    )
+                    time.sleep(seconds)
                     page = requests.get(url, headers=HEADERS)
                     soup = bs4.BeautifulSoup(page.content, features="lxml")
                     robot = soup.find("p", {"class": "a-last"})
             else:
                 break
         if retries >= 3:
+            logging.error(f"Too many robot detection for product {code}.")
             continue
 
         # Title
@@ -178,7 +196,9 @@ def search_product_list(
                 .strip()
             )
             url_info["price"] = price
+            url["price_difference"] = price - url.get("buy_below")
         url_info["price"] = url_info.get("price", np.nan)
+        url_info["price_difference"] = url_info.get("price_difference", np.nan)
 
         # Review count
         review_count_tag = soup.find(id="acrCustomerReviewText")
@@ -238,14 +258,17 @@ def search_product_list(
         list_url_info.append(url_info)
 
         # WARNING
-        if (not np.isnan(url_info.get("price", np.nan))) & (
-            url_info.get("price", 999999) < url_info.get("buy_below")
+        if (not np.isnan(url_info.get("price_difference", np.nan))) & (
+            url_info.get("price_difference", 99999) < 4.99
         ):
+            logging.info("Product {code} might be ready to buy.")
             number = "".join(["+", str(prod_tracker["phone"][index_])])
             _send_whatsapp(number, url_info)
 
     # Append this run results
     tracker_log = pd.DataFrame(list_url_info)
+    size = tracker_log.shape[0]
+    logging.info(f"Scraper finished. Extracted {size} products.")
     tracker_log.to_csv(path_to_history, mode="a", header=False, index=False)
 
 
@@ -253,12 +276,26 @@ def search_product_list(
 
 if __name__ == "__main__":
 
-    if len(sys.argv) < 2:
-        raise RuntimeError("You must add path to files")
+    if len(sys.argv) < 4:
+        logging.error("Not enough files provided.")
+        raise RuntimeError("You must add path to files.")
 
     files_list = sys.argv
+
     path_to_wishlist = files_list[1]
     path_to_users = files_list[2]
     path_to_history = files_list[3]
+
+    if not os.path.isdir(path_to_wishlist):
+        logging.error(f"File {path_to_wishlist} does not exists.")
+        raise RuntimeError(f"File {path_to_wishlist} does not exists.")
+
+    if not os.path.isdir(path_to_users):
+        logging.error(f"File {path_to_users} does not exists.")
+        raise RuntimeError(f"File {path_to_users} does not exists.")
+
+    if not os.path.isdir(path_to_history):
+        logging.warning(f"File {path_to_history} does not exists.")
+        logging.warning("It will be created")
 
     search_product_list(path_to_wishlist, path_to_history, path_to_users)
