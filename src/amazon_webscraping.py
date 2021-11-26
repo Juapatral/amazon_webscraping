@@ -4,6 +4,7 @@
 
 # Modules
 import re
+import sys
 import time
 from datetime import datetime
 
@@ -12,7 +13,6 @@ import numpy as np
 import pandas as pd
 import pywhatkit
 import requests
-from bs4 import BeautifulSoup
 
 # Constants
 HEADERS = {
@@ -29,11 +29,11 @@ HEADERS = {
 
 
 # Private function _get_price_tag
-def _get_price_tag(soup: BeautifulSoup) -> bs4.element.Tag:
+def _get_price_tag(soup: bs4.BeautifulSoup) -> bs4.element.Tag:
     """Get price tag from multiple possible tags.
 
     Args:
-        soup (BeautifulSoup): Soup from an amazon article.
+        soup (bs4.BeautifulSoup): Soup from an amazon article.
 
     Returns:
         bs4.element.Tag: Tag with price
@@ -141,7 +141,7 @@ def search_product_list(
         if retries >= 5:
             continue
         retries = 0
-        soup = BeautifulSoup(page.content, features="lxml")
+        soup = bs4.BeautifulSoup(page.content, features="lxml")
 
         # Check for robot detection
         robot = soup.find("p", {"class": "a-last"})
@@ -152,7 +152,7 @@ def search_product_list(
                     retries += 1
                     time.sleep(30 + 10 * retries)
                     page = requests.get(url, headers=HEADERS)
-                    soup = BeautifulSoup(page.content, features="lxml")
+                    soup = bs4.BeautifulSoup(page.content, features="lxml")
                     robot = soup.find("p", {"class": "a-last"})
             else:
                 break
@@ -252,9 +252,13 @@ def search_product_list(
 # End of function search_product_list
 
 if __name__ == "__main__":
-    # ERASE
-    path_to_wishlist = r".\files\wishlist\my_shopping_list.csv"
-    path_to_history = r".\files\results\my_shoppin_list_searched.csv"
-    path_to_users = r".\files\users\my_users_info.csv"
+
+    if len(sys.argv) < 2:
+        raise RuntimeError("You must add path to files")
+
+    files_list = sys.argv
+    path_to_wishlist = files_list[1]
+    path_to_users = files_list[2]
+    path_to_history = files_list[3]
 
     search_product_list(path_to_wishlist, path_to_history, path_to_users)
