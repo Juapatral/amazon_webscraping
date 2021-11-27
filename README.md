@@ -2,7 +2,9 @@
 
 This is a personal project I started with my frieds to keep track of products of [Amazon](https://www.amazon.com) that we wanted and get an alert if it suddenly received a massive price drop for Black Friday / Cyber Monday / Holidays.
 
-**NOTE**: This repo is ***extremely*** difficult to maintain due to constant CSS changes on amazon's website. We work on this project on our free time, thus we hope you understand if you arrive here and it has not been updated. Thank you and get coding! 
+**NOTE:** This repo is ***extremely*** difficult to maintain due to constant CSS changes on amazon's website. We work on this project on our free time, thus we hope you understand if you arrive here and it has not been updated. Thank you and get coding! 
+
+**NOTE2:** This repo is also a way to practice coding and increase our experience, therefore errors may be common. If you have any suggestions or improvements, set a pull requests and we will check it ASAP.
 
 ## **Preparations**
 
@@ -54,6 +56,7 @@ After each execution a log file will be created inside the `logs` folder.
 
 ## **Additional information**
 * [Common user agent list for headers and cookies.](http://www.networkinghowtos.com/howto/common-user-agent-list/)
+* [Logging](https://realpython.com/python-logging/)
 
 ## **Backlog (not ordered)**
 * Non-specific search.
