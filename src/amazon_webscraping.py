@@ -30,7 +30,16 @@ HEADERS = {
 }
 
 # Log cofiguration
-logging.basicConfig(format="[%(asctime)s]: %(message)s", level=logging.INFO)
+current_datetime = time.localtime()
+current_date = "-".join([f"{date:02d}" for date in time.localtime()[:3]])
+current_time = "-".join([f"{time:02d}" for time in time.localtime()[3:6]])
+log_file = f"./logs/scraper_log_{current_date}T{current_time}.log"
+logging.basicConfig(
+    filename=log_file,
+    format="[%(asctime)s] - [%(levelname)s]: %(message)s",
+    level=logging.INFO,
+)
+logging.info("# ---------- Starting Amazon Webscraping ---------- #")
 
 
 # Private function _get_price_tag
@@ -77,7 +86,7 @@ def _send_whatsapp(number: str, url_info: dict):
         [
             "Soy un bot que busca productos de Amazon y te comento que ",
             f"""tu producto: {url_info.get("code", "PROD_CODE")}. """,
-            "está a 5 USD de diferencia de: ",
+            "está a 1 USD de diferencia de: ",
             f"""{url_info.get("buy_below")}. """,
             f"""Esta es la URL: {url_info.get("url","URL_PRODUCTO")}""",
         ]
@@ -104,172 +113,184 @@ def search_product_list(
         path_to_history (str): [description]
     """
     # Load information
-    logging.info("# ------- READING FILES ------- #")
-    prod_tracker = pd.read_csv(path_to_wishlist)
-    users_details = pd.read_csv(path_to_users)
+    logging.info("Reading files...")
+    try:
+        prod_tracker = pd.read_csv(path_to_wishlist)
+        users_details = pd.read_csv(path_to_users)
 
-    # Merge user information
-    prod_tracker = prod_tracker.merge(users_details)
+        # Merge user information
+        prod_tracker = prod_tracker.merge(users_details)
 
-    # Get urls and dates
-    prod_tracker_urls = prod_tracker["url"]
-    now = datetime.now().strftime("%Y-%m-%d %Hh%Mm")
+        # Get urls and dates
+        prod_tracker_urls = prod_tracker["url"]
+        now = datetime.now().strftime("%Y-%m-%d %Hh%Mm")
 
-    # Iterate over each url
-    list_url_info = []
-    logging.info("Starting scraping of product...")
-    for index_, url in enumerate(prod_tracker_urls):
-        # After first url, wait 5 seconds between.
-        if index_ >= 1:
-            time.sleep(5)
+        # Iterate over each url
+        list_url_info = []
+        logging.info("Starting scraping of product...")
+        for index_, url in enumerate(prod_tracker_urls):
+            # After first url, wait 5 seconds between.
+            if index_ >= 1:
+                time.sleep(5)
 
-        # Create url information dictionary
-        url_info = {
-            "date": now.replace("h", ":").replace("m", ""),
-            "user": prod_tracker["user"][index_],
-            "code": prod_tracker["code"][index_],
-            "url": url,
-            "buy_below": prod_tracker["buy_below"][index_],
-        }
-        code = url_info["code"]
+            # Create url information dictionary
+            url_info = {
+                "date": now.replace("h", ":").replace("m", ""),
+                "user": prod_tracker["user"][index_],
+                "code": prod_tracker["code"][index_],
+                "url": url,
+                "buy_below": prod_tracker["buy_below"][index_],
+                "bought": prod_tracker["bought"][index_] == "Y",
+            }
+            code = url_info["code"]
 
-        # Request
-        retries = 0
-        page = requests.get(url, headers=HEADERS)
+            # Request
+            retries = 0
+            page = requests.get(url, headers=HEADERS)
 
-        # Check for good response
-        while retries < 5:
-            if page.status_code != 200:
-                retries += 1
-                time.sleep(10)
-                page = requests.get(url, headers=HEADERS)
-            else:
-                break
-        if retries >= 5:
-            logging.warning(f"Product {code} did not retrieve information.")
-            continue
-        retries = 0
-        soup = bs4.BeautifulSoup(page.content, features="lxml")
-
-        # Check for robot detection
-        robot = soup.find("p", {"class": "a-last"})
-        while retries < 3:
-            if robot:
-                robot_text = robot.get_text()
-                if robot_text.startswith("Sorry, we just need to make sure"):
+            # Check for good response
+            while retries < 5:
+                if page.status_code != 200:
                     retries += 1
-                    seconds = 30 + 10 * retries
-                    logging.warning(
-                        "".join(
-                            [
-                                f"Robot detection, waiting for {seconds} ",
-                                "seconds.",
-                            ]
-                        )
-                    )
-                    time.sleep(seconds)
+                    time.sleep(10)
                     page = requests.get(url, headers=HEADERS)
-                    soup = bs4.BeautifulSoup(page.content, features="lxml")
-                    robot = soup.find("p", {"class": "a-last"})
-            else:
-                break
-        if retries >= 3:
-            logging.error(f"Too many robot detection for product {code}.")
-            continue
-
-        # Title
-        title_tag = soup.find(id="productTitle")
-        if title_tag:
-            title = title_tag.get_text().strip()
-            url_info["title"] = title
-        url_info["title"] = url_info.get("title", "")
-
-        # Price
-        price_tag = _get_price_tag(soup)
-        if price_tag:
-            price = float(
-                price_tag.get_text()
-                .replace("US", "")
-                .replace("\xa0", "")
-                .replace("$", "")
-                .replace(",", "")
-                .strip()
-            )
-            url_info["price"] = price
-            url["price_difference"] = price - url.get("buy_below")
-        url_info["price"] = url_info.get("price", np.nan)
-        url_info["price_difference"] = url_info.get("price_difference", np.nan)
-
-        # Review count
-        review_count_tag = soup.find(id="acrCustomerReviewText")
-        if review_count_tag:
-            review_count = int(
-                review_count_tag.get_text()
-                .split(" ")[0]
-                .replace(".", "")
-                .replace(",", "")
-            )
-            url_info["review_count"] = review_count
-        url_info["review_count"] = url_info.get("review_count", np.nan)
-
-        # Review score
-        review_score_class = "i[class*='a-icon a-icon-star a-star-']"
-        review_score_tag = soup.select(review_score_class)
-        if review_score_tag != []:
-            for score_tag in review_score_tag:
-                try:
-                    review_score = float(
-                        score_tag.get_text().split(" ")[0].replace(",", ".")
-                    )
-                    url_info["review_score"] = review_score
+                else:
                     break
-                except (AttributeError, KeyError):
-                    continue
-        url_info["review_score"] = url_info.get("review_score", np.nan)
+            if retries >= 5:
+                logging.warning(f"Information for product {code} not found.")
+                continue
+            retries = 0
+            soup = bs4.BeautifulSoup(page.content, features="lxml")
 
-        # checking if there is "Out of stock"
-        try:
-            available = soup.select("#availability .a-color-price")
-            if available != []:
-                quantity = (
-                    available[0]
-                    .get_text()
+            # Check for robot detection
+            robot = soup.find("p", {"class": "a-last"})
+            while retries < 3:
+                if robot:
+                    robot_text = robot.get_text()
+                    if robot_text.startswith("Sorry, we just need to make su"):
+                        retries += 1
+                        seconds = 30 + 10 * retries
+                        logging.warning(
+                            "".join(
+                                [
+                                    f"Robot detection, waiting for {seconds} ",
+                                    "seconds.",
+                                ]
+                            )
+                        )
+                        time.sleep(seconds)
+                        page = requests.get(url, headers=HEADERS)
+                        soup = bs4.BeautifulSoup(page.content, features="lxml")
+                        robot = soup.find("p", {"class": "a-last"})
+                else:
+                    break
+            if retries >= 3:
+                logging.error(f"Too many robot detection for product {code}.")
+                continue
+
+            # Title
+            title_tag = soup.find(id="productTitle")
+            if title_tag:
+                title = title_tag.get_text().strip()
+                url_info["title"] = title
+            url_info["title"] = url_info.get("title", "")
+
+            # Price
+            price_tag = _get_price_tag(soup)
+            if price_tag:
+                price = float(
+                    price_tag.get_text()
+                    .replace("US", "")
+                    .replace("\xa0", "")
+                    .replace("$", "")
+                    .replace(",", "")
                     .strip()
-                    .lower()
+                )
+                url_info["price"] = price
+                url_info["price_difference"] = price - url_info.get("buy_below", np.nan)
+            url_info["price"] = url_info.get("price", np.nan)
+            url_info["price_difference"] = url_info.get("price_difference", np.nan)
+
+            # Review count
+            review_count_tag = soup.find(id="acrCustomerReviewText")
+            if review_count_tag:
+                review_count = int(
+                    review_count_tag.get_text()
+                    .split(" ")[0]
                     .replace(".", "")
                     .replace(",", "")
                 )
-                if re.search("[1-9]+|in stock", quantity):
+                url_info["review_count"] = review_count
+            url_info["review_count"] = url_info.get("review_count", np.nan)
+
+            # Review score
+            review_score_class = "i[class*='a-icon a-icon-star a-star-']"
+            review_score_tag = soup.select(review_score_class)
+            if review_score_tag != []:
+                for score_tag in review_score_tag:
+                    try:
+                        review_score = float(
+                            score_tag.get_text().split(" ")[0].replace(",", ".")
+                        )
+                        url_info["review_score"] = review_score
+                        break
+                    except (AttributeError, KeyError):
+                        continue
+            url_info["review_score"] = url_info.get("review_score", np.nan)
+
+            # checking if there is "Out of stock"
+            try:
+                available = soup.select("#availability .a-color-price")
+                if available != []:
+                    quantity = (
+                        available[0]
+                        .get_text()
+                        .strip()
+                        .lower()
+                        .replace(".", "")
+                        .replace(",", "")
+                    )
+                    if re.search("[1-9]+|in stock", quantity):
+                        stock = "Available"
+                        url_info["stock"] = stock
+                    else:
+                        stock = "Out of stock"
+                        url_info["stock"] = stock
+                else:
                     stock = "Available"
                     url_info["stock"] = stock
-                else:
-                    stock = "Out of stock"
-                    url_info["stock"] = stock
-            else:
+            except (AttributeError, IndexError):
+                # Ff any error the product is available
                 stock = "Available"
                 url_info["stock"] = stock
-        except (AttributeError, IndexError):
-            # Ff any error the product is available
-            stock = "Available"
-            url_info["stock"] = stock
-        url_info["stock"] = url_info.get("stock", "")
+            url_info["stock"] = url_info.get("stock", "")
 
-        # Getting dataframe
-        list_url_info.append(url_info)
+            # Getting dataframe
+            list_url_info.append(url_info)
 
-        # WARNING
-        if (not np.isnan(url_info.get("price_difference", np.nan))) & (
-            url_info.get("price_difference", 99999) < 4.99
-        ):
-            logging.info("Product {code} might be ready to buy.")
-            number = "".join(["+", str(prod_tracker["phone"][index_])])
-            _send_whatsapp(number, url_info)
+            # Message user if deal is good enough
+            if (
+                (not np.isnan(url_info.get("price_difference", np.nan)))
+                & (not url_info.get("bought", True))
+                & (
+                    # TODO: implement treshold
+                    url_info.get("price_difference", 99999)
+                    < 0.99
+                )
+            ):
+                logging.info("Product {code} might be ready to buy.")
+                number = prod_tracker["phone"][index_]
+                _send_whatsapp(number, url_info)
 
-    # Append this run results
-    tracker_log = pd.DataFrame(list_url_info)
-    size = tracker_log.shape[0]
-    logging.info(f"Scraper finished. Extracted {size} products.")
-    tracker_log.to_csv(path_to_history, mode="a", header=False, index=False)
+        # Append this run results
+        tracker_log = pd.DataFrame(list_url_info)
+        size = tracker_log.shape[0]
+        logging.info(f"Scraper finished. Extracted {size} products.")
+        tracker_log.to_csv(path_to_history, mode="a", header=False, index=False)
+    except Exception as general_error:
+        logging.critical("PROGRAM FAILED WITH ERROR.")
+        logging.exception(f"Program failed with the following error: {general_error}")
+        raise RuntimeError("Program failed with error.", general_error)
 
 
 # End of function search_product_list
@@ -286,16 +307,19 @@ if __name__ == "__main__":
     path_to_users = files_list[2]
     path_to_history = files_list[3]
 
-    if not os.path.isdir(path_to_wishlist):
+    if not os.path.isfile(path_to_wishlist):
         logging.error(f"File {path_to_wishlist} does not exists.")
         raise RuntimeError(f"File {path_to_wishlist} does not exists.")
 
-    if not os.path.isdir(path_to_users):
+    if not os.path.isfile(path_to_users):
         logging.error(f"File {path_to_users} does not exists.")
         raise RuntimeError(f"File {path_to_users} does not exists.")
 
-    if not os.path.isdir(path_to_history):
+    if not os.path.isfile(path_to_history):
         logging.warning(f"File {path_to_history} does not exists.")
         logging.warning("It will be created")
 
     search_product_list(path_to_wishlist, path_to_history, path_to_users)
+
+logging.info("# ---------- The End - Amazon Webscraping ---------- #")
+logging.info("# ---------- Credits: github@Juapatral    ---------- #")
