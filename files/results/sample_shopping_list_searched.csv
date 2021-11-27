@@ -1,1 +1,1 @@
-date,user,code,url,buy_below,title,price,review_count,review_score,stock
+date,user,code,url,buy_below,bought,title,price,price_difference,review_count,review_score,stock
