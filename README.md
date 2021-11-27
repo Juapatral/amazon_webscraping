@@ -1,6 +1,6 @@
 # **AMAZON WEBSCRAPING**
 
-This is a personal project I started with my frieds to keep track of products of [Amazon](https://www.amazon.com) that we wanted and get an alert if it suddenly received a massive price drop for Black Friday / Cyber Monday / Holidays.
+This is a personal project I started with my frieds to keep track of products of [Amazon](https://www.amazon.com) that we wanted and get an alert if any suddenly received a massive price drop for Black Friday / Cyber Monday / Holidays.
 
 **NOTE:** This repo is ***extremely*** difficult to maintain due to constant CSS changes on amazon's website. We work on this project on our free time, thus we hope you understand if you arrive here and it has not been updated. Thank you and get coding! 
 
@@ -46,7 +46,7 @@ There are three files you must create that are located in the `files` folder:
     This file is going to be filled with the results of the scraped information. It is not necessary to have information before running, but it is *highly suggested* to create a new csv file with the exact same titles, to conserve the original structure. Check `sample_shopping_list_searched.csv` for a guide.    
 
 ## **Execution**
-To execute call bat file with paths to your wishlist, users, and results files.
+To execute call the bat file located in `scripts` with extra parameters to your wishlist, users, and results files location.
 
 ```cmd
 scripts\execute.bat path\to\your_shopping_list.csv path\to\your_users_info.csv path\to\your_shopping_list_searched.csv
@@ -58,7 +58,7 @@ After each execution a log file will be created inside the `logs` folder.
 * [Common user agent list for headers and cookies.](http://www.networkinghowtos.com/howto/common-user-agent-list/)
 * [Logging](https://realpython.com/python-logging/)
 
-## **Backlog (not ordered)**
+## **Backlog (not ordered, not mandatory)**
 * Non-specific search.
 * Testing.
 * Refactoring and optimization.
@@ -68,6 +68,7 @@ After each execution a log file will be created inside the `logs` folder.
 * Docker App.
 * Web of history prices.
 * Database API.
+* Python Package.
 
 ## **Credits**
 * Github: [Juapatral](https://www.github.com/Juapatral)
