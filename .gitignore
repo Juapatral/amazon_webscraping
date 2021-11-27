@@ -6,3 +6,6 @@ my*.csv
 
 # All whatsapp files
 Pywhat*
+
+# All logs
+scraper_log*
