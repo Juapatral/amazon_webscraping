@@ -1,1 +1,2 @@
-url,code,buy_below,user
+url,code,buy_below,user,bought
+https://amazon.com/your-product-url,your-product-code,0,your-user,bought-Y/N
